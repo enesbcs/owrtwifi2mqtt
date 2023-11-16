@@ -1,0 +1,79 @@
+#!/bin/ash
+
+HOSTNAME=$(cat /proc/sys/kernel/hostname)
+
+# Allow further customization via ENV variables
+: ${MQTT_BASETOPIC:="openwrt/${HOSTNAME}"}
+: ${MQTT_STATUS_TOPIC:="${MQTT_BASETOPIC}/"}
+: ${MQTT_USER:=""}
+: ${MQTT_PASSWORD:=""}
+: ${MQTT_ID:="${MQTT_BASETOPIC}"}
+: ${MQTT_DISCOVERY:="homeassistant/"}
+
+DEFAULT_MQTT_SERVER="192.168.1.100"
+MQTT_SERVER=$DEFAULT_MQTT_SERVER
+
+SCRIPT_NAME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
+
+test_for_ipv4() {
+  param_ip=$1
+  echo $param_ip | grep -E '\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4}\b' > /dev/null
+  if [ $? -eq 0 ]; then
+    MQTT_SERVER=$param_ip
+    return 0
+  fi
+  return 1
+}
+
+print_usage() {
+cat << EOF
+Supported optional parameters:
+  MQTT server IP: the IPv4 address of the MQTT server (default ${DEFAULT_MQTT_SERVER})
+Examples:
+  ${SCRIPT_NAME}
+  ${SCRIPT_NAME} 192.168.1.2
+EOF
+}
+
+get_dhcp_name() {
+  MAC=$1
+  DHCP_NAME=$(grep ${MAC} /tmp/dhcp.leases | awk '{print $4}')
+  if [ "$DHCP_NAME" = "*" ]; then
+    return 1
+  else
+    echo ${DHCP_NAME}
+    return 0
+  fi
+}
+
+for param in "$@"; do
+  test_for_ipv4 $param || \
+  { print_usage; exit 1; }
+done
+
+
+echo "${SCRIPT_NAME}, mode: ${MODE}, MQTT server: ${MQTT_SERVER}"
+iw event | \
+while read LINE; do
+    if echo $LINE | grep -q -E "(new|del) station"; then
+      EVENT=$(echo ${LINE} | awk '/(new|del) station/ {print $2}')
+      MAC=$(echo ${LINE} | awk '/(new|del) station/ {print $4}')
+      DHCP_NAME=$(get_dhcp_name ${MAC})      
+      if [ "${EVENT}" == "new" ]; then
+       STATE="Online"
+       mosquitto_pub \
+        -r \
+        -h ${MQTT_SERVER} \
+        -u ${MQTT_USER} -P ${MQTT_PASSWORD} -i ${MQTT_ID} \
+        -t "${MQTT_DISCOVERY}binary_sensor/${MAC//:/-}/config" \
+        -m "{\"name\":\"${DHCP_NAME} Online\", \"stat_t\": \"${MQTT_STATUS_TOPIC}${MAC//:/-}/iwevent\",\"pl_on\": \"Online\", \"pl_off\": \"Offline\", \"val_tpl\": \"{{value_json.state}}\",\"uniq_id\":\"${MAC//:/-}\"}"
+      else
+       STATE="Offline"
+      fi
+      mosquitto_pub \
+        -h ${MQTT_SERVER} \
+        -u ${MQTT_USER} -P ${MQTT_PASSWORD} -i ${MQTT_ID} \
+        -t "${MQTT_STATUS_TOPIC}${MAC//:/-}/iwevent" \
+        -m "{\"state\": \"${STATE}\", \"name\": \"${DHCP_NAME}\"}"
+    fi
+done
