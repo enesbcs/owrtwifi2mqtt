@@ -48,11 +48,12 @@ After installation the following topics will be published for each WiFi device, 
 	openwrt/HOSTNAME/00-00-00-00-00-00/iwevent
 	
 Messege will be a JSON with "state" : Online/Offline and "name" with DNSName of the device, like this:
+```
 {
   "state": "Offline",
   "name": "IAMTEDEVICE"
 }
-
+```
 
 Credits
 -------
