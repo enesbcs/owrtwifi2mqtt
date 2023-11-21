@@ -29,7 +29,7 @@ Place the following lines
 
     nohup /usr/bin/presence_report 192.168.1.2 >/dev/null 2>&1 &
 
-inside the `/etc/rc.local` file before the `exit 0`. You can to this via command-line or via LuCI in System -> Startup -> Local Startup. The script will be executed after reboot.
+inside the `/etc/rc.local` file before the `exit 0`. You can to this via command-line or via LuCI in System -> Startup -> Local Startup. The script will be executed after reboot. Please replace '192.168.1.2' with your MQTT broker IP address.
 
 ENV variables for configuration are:
 
